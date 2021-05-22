@@ -67,14 +67,13 @@ class ScoutnetMember:
 
     def __repr__(self):
         return ", ".join(
-                [
-                    str(self.member_no),
-                    self.first_name,
-                    self.last_name,
-                    self.contact_mobile_phone,
-                ]
-            )
-        
+            [
+                str(self.member_no),
+                self.first_name,
+                self.last_name,
+                self.contact_mobile_phone,
+            ]
+        )
 
     @staticmethod
     def get_data(field: str, data: dict):
@@ -132,6 +131,14 @@ def main() -> None:
         "--verbose", dest="verbose", action="store_true", help="Enable verbose output"
     )
     parser.add_argument(
+        "--dump",
+        dest="dump",
+    )
+    parser.add_argument(
+        "--load",
+        dest="load",
+    )
+    parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Enable debugging output"
     )
     args = parser.parse_args()
@@ -145,15 +152,16 @@ def main() -> None:
     with open(DEFAULT_CONFIG_FILE, "rt") as config_file:
         config = yaml.safe_load(config_file)
 
-    # scoutnet_data = get_members_from_scoutnet(
-    #    api_endpoint=config["scoutnet"]["api_endpoint"],
-    #    api_id=config["scoutnet"]["api_id"],
-    #    api_key=config["scoutnet"]["api_key"],
-    #    output="dump.json",
-    # )
-
-    with open("dump.json", "rt") as d:
-        scoutnet_data = json.load(d)
+    if not args.load:
+        scoutnet_data = get_members_from_scoutnet(
+            api_endpoint=config["scoutnet"]["api_endpoint"],
+            api_id=config["scoutnet"]["api_id"],
+            api_key=config["scoutnet"]["api_key"],
+            output=args.dump,
+        )
+    else:
+        with open(args.load, "rt") as d:
+            scoutnet_data = json.load(d)
 
     members = {
         int(k): ScoutnetMember.from_data(v) for k, v in scoutnet_data["data"].items()
