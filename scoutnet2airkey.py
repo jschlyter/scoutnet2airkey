@@ -1,125 +1,46 @@
-#!/usr/bin/env python3
-
 import argparse
 import json
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-import yaml
 
 import requests
-
+import yaml
+from scoutnet import ScoutnetClient
 
 DEFAULT_CONFIG_FILE = "scoutnet2airkey.yaml"
 
 
-@dataclass(frozen=True)
-class ScoutnetRole:
-    role_id: int
-    role_key: str
+def dump_data(client: ScoutnetClient, filename: str):
+    memberlist_data = client.memberlist()
+    customlists_data = client.customlists()
 
-    @classmethod
-    def from_data(cls, data):
-        return cls(
-            role_id=data.get("role_id"),
-            role_key=data.get("role_key"),
+    client.memberlist = lambda: memberlist_data
+    client.customlists = lambda: customlists_data
+
+    with open(filename, "wt") as dump_file:
+        json.dump(
+            {"memberlist": memberlist_data, "customlists": customlists_data}, dump_file
         )
 
 
-@dataclass(frozen=True)
-class ScoutnetRoles:
-    groups: Dict[int, List[ScoutnetRole]] = field(default_factory=list)
-    troops: Dict[int, List[ScoutnetRole]] = field(default_factory=list)
-    role_ids: List[str] = field(default_factory=list)
+def load_data(client: ScoutnetClient, filename: str):
 
-    @classmethod
-    def from_data(cls, data):
-        if len(data) == 0:
-            return cls()
-        role_groups = {}
-        for org_id, group_data in data.get("group", {}).items():
-            role_groups[int(org_id)] = [
-                ScoutnetRole.from_data(v) for v in group_data.values()
-            ]
-        role_troops = {}
-        for troop_id, group_data in data.get("troop", {}).items():
-            role_troops[int(troop_id)] = [
-                ScoutnetRole.from_data(v) for v in group_data.values()
-            ]
-        roles_any = set()
-        for k, rs in role_groups.items():
-            for r in rs:
-                roles_any.add(r.role_key)
-        for k, rs in role_troops.items():
-            for r in rs:
-                roles_any.add(r.role_key)
-        return cls(groups=role_groups, troops=role_troops, role_ids=list(roles_any))
+    with open(filename, "rt") as dump_file:
+        dump = json.load(dump_file)
 
+    memberlist_data = dump["memberlist"]
+    customlists_data = dump["customlists"]
 
-@dataclass(frozen=True)
-class ScoutnetMember:
-    member_no: int
-    first_name: Optional[str]
-    last_name: Optional[str]
-    contact_mobile_phone: Optional[str]
-    roles: ScoutnetRoles
-
-    def __repr__(self):
-        return ", ".join(
-            [
-                str(self.member_no),
-                self.first_name,
-                self.last_name,
-                self.contact_mobile_phone,
-            ]
-        )
-
-    @staticmethod
-    def get_data(field: str, data: dict):
-        if field in data:
-            return data[field]["value"]
-
-    @classmethod
-    def from_data(cls, data):
-        return cls(
-            member_no=int(cls.get_data("member_no", data)),
-            first_name=cls.get_data("first_name", data),
-            last_name=cls.get_data("last_name", data),
-            contact_mobile_phone=convert_to_e164(
-                cls.get_data("contact_mobile_phone", data)
-            ),
-            roles=ScoutnetRoles.from_data(cls.get_data("roles", data)),
-        )
-
-
-def convert_to_e164(phone: Optional[str]) -> Optional[str]:
-    if phone:
-        phone = re.sub(r"[\-\s]", "", phone)
-        phone = re.sub(r"^0", "+46", phone)
-    return phone
-
-
-def get_members_from_scoutnet(
-    api_endpoint: str, api_id: str, api_key: str, output: Optional[str]
-):
-    session = requests.Session()
-    session.auth = (api_id, api_key)
-
-    response = session.get(f"{api_endpoint}/group/memberlist")
-    response.raise_for_status()
-    members = response.json()
-
-    if output:
-        with open(output, "wt") as d:
-            json.dump(members, d)
-    return members
+    client.memberlist = lambda: memberlist_data
+    client.customlists = lambda: customlists_data
 
 
 def main() -> None:
-    """main"""
+    """Main function"""
 
-    parser = argparse.ArgumentParser(description="Scoutnet to EVVA Airkey integration")
+    parser = argparse.ArgumentParser(description="Scoutnet EVVA Airkey Integration")
 
     parser.add_argument(
         "--dry-run",
@@ -130,14 +51,8 @@ def main() -> None:
     parser.add_argument(
         "--verbose", dest="verbose", action="store_true", help="Enable verbose output"
     )
-    parser.add_argument(
-        "--dump",
-        dest="dump",
-    )
-    parser.add_argument(
-        "--load",
-        dest="load",
-    )
+    parser.add_argument("--dump", dest="dump")
+    parser.add_argument("--load", dest="load")
     parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Enable debugging output"
     )
@@ -152,32 +67,33 @@ def main() -> None:
     with open(DEFAULT_CONFIG_FILE, "rt") as config_file:
         config = yaml.safe_load(config_file)
 
-    if not args.load:
-        scoutnet_data = get_members_from_scoutnet(
-            api_endpoint=config["scoutnet"]["api_endpoint"],
-            api_id=config["scoutnet"]["api_id"],
-            api_key=config["scoutnet"]["api_key"],
-            output=args.dump,
-        )
-    else:
-        with open(args.load, "rt") as d:
-            scoutnet_data = json.load(d)
+    scoutnet = ScoutnetClient(
+        api_endpoint=config["scoutnet"].get("api_endpoint"),
+        api_id=config["scoutnet"]["api_id"],
+        api_key_memberlist=config["scoutnet"]["api_key_memberlist"],
+        api_key_customlists=config["scoutnet"]["api_key_customlists"],
+    )
 
-    members = {
-        int(k): ScoutnetMember.from_data(v) for k, v in scoutnet_data["data"].items()
-    }
+    if args.dump:
+        dump_data(scoutnet, args.dump)
+    elif args.load:
+        load_data(scoutnet, args.load)
 
-    roles_with_key = set(list(config["airkey"]["roles"]))
-    keyholders = {}
+    members = scoutnet.get_all_members()
+    key_holders_list_ids = set(config["airkey"]["holders"])
 
-    for i, member in members.items():
-        if member.roles.groups or member.roles.troops:
-            if set(member.roles.role_ids) & roles_with_key:
-                if member.contact_mobile_phone:
-                    keyholders[i] = member
+    key_holders = {}
+    for list_id, v in scoutnet.get_all_lists(list_ids=key_holders_list_ids).items():
+        for member_id, member in v.members.items():
+            if member_id not in key_holders:
+                if member_id in members:
+                    key_holders[member_id] = members[member_id]
 
-    for i, member in keyholders.items():
-        print(member)
+    if len(key_holders) == 0:
+        raise RuntimeError("No key holders!")
+
+    for k, v in key_holders.items():
+        print(v)
 
 
 if __name__ == "__main__":
