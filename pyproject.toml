@@ -1,8 +1,10 @@
 [tool.poetry]
 name = "scoutnet2airkey"
 version = "0.0.0"
-description = "Scoutnet to EVVA Airkey integration"
+description = "Scoutnet EVVA Airkey integration"
 authors = ["Jakob Schlyter <jakob@schlyter.se>"]
+license = "BSD-2-Clause"
+repository = "https://github.com/jschlyter/scoutnet2airkey"
 
 [tool.poetry.dependencies]
 python = "^3.9"
@@ -12,6 +14,7 @@ python-dateutil = "^2.8.1"
 urllib3 = "^1.26.4"
 requests = "^2.25.1"
 PyYAML = "^5.4.1"
+scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", rev = "main"}
 
 [tool.poetry.dev-dependencies]
 
