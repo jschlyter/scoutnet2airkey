@@ -76,10 +76,17 @@ def main() -> None:
         load_data(scoutnet, args.load)
 
     members = scoutnet.get_all_members()
-    key_holders_list_ids = set(config["airkey"]["holders"])
+    key_holders_aliases = set(set(config["airkey"]["holders"]))
+
+    key_holders_list_ids = []
+    for list_data in scoutnet.get_all_lists(fetch_members=False).values():
+        if key_holders_aliases & set(list_data.aliases):
+            key_holders_list_ids.append(list_data.id)
 
     key_holders = {}
-    for list_id, v in scoutnet.get_all_lists(list_ids=key_holders_list_ids).items():
+    for list_id, v in scoutnet.get_all_lists(
+        fetch_members=True, list_ids=key_holders_list_ids
+    ).items():
         for member_id, member in v.members.items():
             if member_id not in key_holders:
                 if member_id in members:
