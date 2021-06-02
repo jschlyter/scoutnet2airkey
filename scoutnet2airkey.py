@@ -40,15 +40,24 @@ def load_data(client: ScoutnetClient, filename: str):
 
 class ScoutnetAirkey(object):
     def __init__(
-        self, endpoint: str, api_key: str, scoutnet_users: dict, dry_run: bool = True
+        self,
+        endpoint: str,
+        api_key: str,
+        scoutnet_users: dict,
+        send_sms: bool = False,
+        dry_run: bool = True,
     ):
         conf = airkey.Configuration()
         conf.host = endpoint
         self.api_client = airkey.ApiClient(
             conf, header_name="X-API-Key", header_value=api_key
         )
+        self.send_sms = send_sms
         self.dry_run = dry_run
+
         self.logger = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        if self.dry_run:
+            self.logger = self.logger.getChild("DryRun")
 
         self.scoutnet_users = scoutnet_users
 
@@ -194,7 +203,7 @@ class ScoutnetAirkey(object):
                 )
             )
         if req_create and not self.dry_run:
-            res = api.create_persons(req_create)
+            api.create_persons(req_create)
 
         # Delete removed users
         req_delete = []
@@ -266,7 +275,8 @@ class ScoutnetAirkey(object):
             res = api.create_phones(req_create)
             req_assign = []
             for phone in res:
-                if (person_id := self.phone_to_person_id.get(phone.phone_number)) :
+                person_id = self.phone_to_person_id.get(phone.phone_number)
+                if person_id:
                     self.logger.info("Assigning phone %s", phone.phone_number)
                     req_assign.append(
                         airkey.models.MediumAssignment(
@@ -275,7 +285,13 @@ class ScoutnetAirkey(object):
                     )
             if req_assign:
                 api.assign_owner_to_medium(req_assign)
-                # TODO: send activation code
+                if self.send_sms:
+                    for a in req_assign:
+                        phone = self.phones_by_medium_id[a.medium_id]
+                        self.logger.info(
+                            "Sending registration code to %s", phone.phone_number
+                        )
+                        api.send_registration_code_to_phone(a.medium_id)
 
         # Delete removed phones
         req_delete = []
@@ -301,7 +317,8 @@ class ScoutnetAirkey(object):
         for scoutnet_id, person in self.persons_by_scoutnet_id.items():
             if scoutnet_id not in self.auth_by_scoutnet_id:
 
-                if not (phone := self.phones_by_scoutnet_id.get(scoutnet_id)):
+                phone = self.phones_by_scoutnet_id.get(scoutnet_id)
+                if not phone:
                     self.logger.debug(
                         "No phone medium for %d, %s %s",
                         scoutnet_id,
@@ -347,6 +364,25 @@ class ScoutnetAirkey(object):
             for a in req_create:
                 api.create_or_update_authorizations_with_advanced_options(a)
 
+    def send_registration_codes(self):
+        """Send registration codes"""
+        self._fetch_medium()
+
+        api = airkey.MediaApi(api_client=self.api_client)
+
+        for phone in self.phones_by_medium_id.values():
+            if phone.medium_identifier is None:
+                if phone.pairing_code_valid_until is not None:
+                    self.logger.warning("Valid registration for %s", phone.phone_number)
+                else:
+                    self.logger.info(
+                        "Sending new registration code to %s", phone.phone_number
+                    )
+                    if self.send_sms and not self.dry_run:
+                        api.send_registration_code_to_phone(phone.id)
+            else:
+                self.logger.debug("Already registered %s", phone.phone_number)
+
 
 def main() -> None:
     """Main function"""
@@ -367,6 +403,7 @@ def main() -> None:
     parser.add_argument(
         "--airkey", dest="airkey", action="store_true", help="Provision to EVVA Airkey"
     )
+    parser.add_argument("--sms", dest="send_sms", action="store_true", help="Send SMS")
     parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Enable debugging output"
     )
@@ -418,11 +455,13 @@ def main() -> None:
             endpoint=config["airkey"]["endpoint"],
             api_key=config["airkey"]["api_key"],
             scoutnet_users=key_holders,
+            send_sms=args.send_sms,
             dry_run=args.dry_run,
         )
-        a.sync_persons()
-        a.sync_phones()
-        a.sync_auth(area_ids=config["airkey"]["areas"])
+        # a.sync_persons()
+        # a.sync_phones()
+        # a.sync_auth(area_ids=config["airkey"]["areas"])
+        a.send_registration_codes()
 
 
 if __name__ == "__main__":
