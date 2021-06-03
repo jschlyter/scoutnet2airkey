@@ -142,10 +142,10 @@ class ScoutnetAirkey(object):
             offset += limit
         for a in authorizations:
             self.auth_by_auth_id[a.id] = a
-            scoutnet_id = int(
-                self.persons_by_person_id[a.person_id].secondary_identification
-            )
-            self.auth_by_scoutnet_id[scoutnet_id].append(a)
+            person = self.persons_by_person_id[a.person_id]
+            if person.secondary_identification:
+                scoutnet_id = int(person.secondary_identification)
+                self.auth_by_scoutnet_id[scoutnet_id].append(a)
 
     def sync_persons(self):
         """Sync persons with Airkey"""
@@ -285,13 +285,8 @@ class ScoutnetAirkey(object):
                     )
             if req_assign:
                 api.assign_owner_to_medium(req_assign)
-                if self.send_sms:
-                    for a in req_assign:
-                        phone = self.phones_by_medium_id[a.medium_id]
-                        self.logger.info(
-                            "Sending registration code to %s", phone.phone_number
-                        )
-                        api.send_registration_code_to_phone(a.medium_id)
+                for a in req_assign:
+                    self.send_registration_code(a.medium_id)
 
         # Delete removed phones
         req_delete = []
@@ -364,24 +359,32 @@ class ScoutnetAirkey(object):
             for a in req_create:
                 api.create_or_update_authorizations_with_advanced_options(a)
 
-    def send_registration_codes(self):
+    def send_pending_registration_codes(self):
         """Send registration codes"""
         self._fetch_medium()
-
         api = airkey.MediaApi(api_client=self.api_client)
+        for medium_id in self.phones_by_medium_id.keys():
+            self.send_registration_code(medium_id)
 
-        for phone in self.phones_by_medium_id.values():
-            if phone.medium_identifier is None:
-                if phone.pairing_code_valid_until is not None:
-                    self.logger.warning("Valid registration for %s", phone.phone_number)
-                else:
-                    self.logger.info(
-                        "Sending new registration code to %s", phone.phone_number
-                    )
-                    if self.send_sms and not self.dry_run:
-                        api.send_registration_code_to_phone(phone.id)
+    def send_registration_code(self, medium_id: int):
+        phone = self.phones_by_medium_id[medium_id]
+        if phone.medium_identifier is None:
+            if phone.pairing_code_valid_until is not None:
+                self.logger.info(
+                    "Pending registration exists for %s", phone.phone_number
+                )
+            elif self.send_sms:
+                self.logger.info(
+                    "Sending new registration code to %s", phone.phone_number
+                )
+                if not self.dry_run:
+                    api.send_registration_code_to_phone(phone.id)
             else:
-                self.logger.debug("Already registered %s", phone.phone_number)
+                self.logger.warning(
+                    "NOT sending registration code to %s", phone.phone_number
+                )
+        else:
+            self.logger.debug("Already registered %s", phone.phone_number)
 
 
 def main() -> None:
@@ -403,7 +406,9 @@ def main() -> None:
     parser.add_argument(
         "--airkey", dest="airkey", action="store_true", help="Provision to EVVA Airkey"
     )
-    parser.add_argument("--sms", dest="send_sms", action="store_true", help="Send SMS")
+    parser.add_argument(
+        "--sms", dest="send_sms", action="store_true", help="Send registration SMS"
+    )
     parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Enable debugging output"
     )
@@ -458,10 +463,10 @@ def main() -> None:
             send_sms=args.send_sms,
             dry_run=args.dry_run,
         )
-        # a.sync_persons()
-        # a.sync_phones()
-        # a.sync_auth(area_ids=config["airkey"]["areas"])
-        a.send_registration_codes()
+        a.sync_persons()
+        a.sync_phones()
+        a.sync_auth(area_ids=config["airkey"]["areas"])
+        a.send_pending_registration_codes()
 
 
 if __name__ == "__main__":
