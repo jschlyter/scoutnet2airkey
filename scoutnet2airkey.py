@@ -147,7 +147,12 @@ class ScoutnetAirkey(object):
                 scoutnet_id = int(person.secondary_identification)
                 self.auth_by_scoutnet_id[scoutnet_id].append(a)
 
-    def sync_persons(self):
+    def sync_persons(
+        self,
+        create_persons: bool = True,
+        update_persons: bool = True,
+        delete_persons: bool = False,
+    ):
         """Sync persons with Airkey"""
         self._fetch_persons()
 
@@ -156,69 +161,76 @@ class ScoutnetAirkey(object):
         airkey_ids = set(self.persons_by_scoutnet_id.keys())
         scoutnet_ids = set(self.scoutnet_users.keys())
 
-        deleted_ids = airkey_ids - scoutnet_ids
-        created_ids = scoutnet_ids - airkey_ids
-        existing_ids = scoutnet_ids & airkey_ids
-
         # Update existing users
-        req_update = []
-        for i in existing_ids:
-            if (
-                self.scoutnet_users[i].first_name
-                != self.persons_by_scoutnet_id[i].first_name
-                or self.scoutnet_users[i].last_name
-                != self.persons_by_scoutnet_id[i].last_name
-            ):
+        if update_persons:
+            existing_ids = scoutnet_ids & airkey_ids
+            req_update = []
+            for i in existing_ids:
+                if (
+                    self.scoutnet_users[i].first_name
+                    != self.persons_by_scoutnet_id[i].first_name
+                    or self.scoutnet_users[i].last_name
+                    != self.persons_by_scoutnet_id[i].last_name
+                ):
+                    self.logger.info(
+                        "Update user %d (%s %s)",
+                        i,
+                        self.scoutnet_users[i].first_name,
+                        self.scoutnet_users[i].last_name,
+                    )
+                    self.persons_by_scoutnet_id[i].first_name = self.scoutnet_users[
+                        i
+                    ].first_name
+                    self.persons_by_scoutnet_id[i].last_name = self.scoutnet_users[
+                        i
+                    ].last_name
+                    req_update.append(self.persons_by_scoutnet_id[i])
+            if req_update and not self.dry_run:
+                api.update_persons(req_update)
+
+        # Create new users
+        if create_persons:
+            created_ids = scoutnet_ids - airkey_ids
+            req_create = []
+            for i in created_ids:
                 self.logger.info(
-                    "Update user %d (%s %s)",
+                    "Create user %d (%s %s)",
                     i,
                     self.scoutnet_users[i].first_name,
                     self.scoutnet_users[i].last_name,
                 )
-                self.persons_by_scoutnet_id[i].first_name = self.scoutnet_users[
-                    i
-                ].first_name
-                self.persons_by_scoutnet_id[i].last_name = self.scoutnet_users[
-                    i
-                ].last_name
-                req_update.append(self.persons_by_scoutnet_id[i])
-        if req_update and not self.dry_run:
-            api.update_persons(req_update)
-
-        # Create new users
-        req_create = []
-        for i in created_ids:
-            self.logger.info(
-                "Create user %d (%s %s)",
-                i,
-                self.scoutnet_users[i].first_name,
-                self.scoutnet_users[i].last_name,
-            )
-            req_create.append(
-                airkey.models.PersonCreate(
-                    first_name=self.scoutnet_users[i].first_name,
-                    last_name=self.scoutnet_users[i].last_name,
-                    secondary_identification=str(i),
-                    correspondence_language_code=DEFAULT_LANGUAGE,
+                req_create.append(
+                    airkey.models.PersonCreate(
+                        first_name=self.scoutnet_users[i].first_name,
+                        last_name=self.scoutnet_users[i].last_name,
+                        secondary_identification=str(i),
+                        correspondence_language_code=DEFAULT_LANGUAGE,
+                    )
                 )
-            )
-        if req_create and not self.dry_run:
-            api.create_persons(req_create)
+            if req_create and not self.dry_run:
+                api.create_persons(req_create)
 
         # Delete removed users
-        req_delete = []
-        for i in deleted_ids:
-            self.logger.info(
-                "Delete user %d (%s %s)",
-                i,
-                self.persons_by_scoutnet_id[i].first_name,
-                self.persons_by_scoutnet_id[i].last_name,
-            )
-            req_delete.append(self.persons_by_scoutnet_id[i].id)
-        if req_delete and not self.dry_run:
-            api.delete_persons(req_delete)
+        if delete_persons:
+            deleted_ids = airkey_ids - scoutnet_ids
+            req_delete = []
+            for i in deleted_ids:
+                self.logger.info(
+                    "Delete user %d (%s %s)",
+                    i,
+                    self.persons_by_scoutnet_id[i].first_name,
+                    self.persons_by_scoutnet_id[i].last_name,
+                )
+                req_delete.append(self.persons_by_scoutnet_id[i].id)
+            if req_delete and not self.dry_run:
+                api.delete_persons(req_delete)
 
-    def sync_phones(self):
+    def sync_phones(
+        self,
+        create_phones: bool = True,
+        update_phones: bool = True,
+        delete_phones: bool = False,
+    ):
         """Sync phones with Airkey"""
         self._fetch_medium()
 
@@ -227,78 +239,80 @@ class ScoutnetAirkey(object):
         airkey_ids = set(self.phones_by_scoutnet_id.keys())
         scoutnet_ids = set(self.scoutnet_users.keys())
 
-        deleted_ids = airkey_ids - scoutnet_ids
-        created_ids = scoutnet_ids - airkey_ids
-        existing_ids = scoutnet_ids & airkey_ids
-
         # Update existing phones
-        req_update = []
-        for i in existing_ids:
-            if (
-                self.phones_by_scoutnet_id[i].phone_number
-                != self.scoutnet_users[i].contact_mobile_phone
-            ):
-                self.logger.info(
-                    "Update phone %d (%s)",
-                    i,
-                    self.scoutnet_users[i].contact_mobile_phone,
-                )
-                self.phones_by_scoutnet_id[i].phone_number = self.scoutnet_users[
-                    i
-                ].contact_mobile_phone
-                req_update.append(self.phones_by_scoutnet_id[i])
-        if req_update and not self.dry_run:
-            api.update_phones(req_update)
+        if create_phones:
+            existing_ids = scoutnet_ids & airkey_ids
+            req_update = []
+            for i in existing_ids:
+                if (
+                    self.phones_by_scoutnet_id[i].phone_number
+                    != self.scoutnet_users[i].contact_mobile_phone
+                ):
+                    self.logger.info(
+                        "Update phone %d (%s)",
+                        i,
+                        self.scoutnet_users[i].contact_mobile_phone,
+                    )
+                    self.phones_by_scoutnet_id[i].phone_number = self.scoutnet_users[
+                        i
+                    ].contact_mobile_phone
+                    req_update.append(self.phones_by_scoutnet_id[i])
+            if req_update and not self.dry_run:
+                api.update_phones(req_update)
 
         # Create new phones
-        req_create = []
-        for i in created_ids:
-            if self.scoutnet_users[i].contact_mobile_phone:
-                self.logger.info(
-                    "Create phone %d (%s)",
-                    i,
-                    self.scoutnet_users[i].contact_mobile_phone,
-                )
-                req_create.append(
-                    airkey.models.PhoneCreate(
-                        phone_number=self.scoutnet_users[i].contact_mobile_phone,
+        if create_phones:
+            created_ids = scoutnet_ids - airkey_ids
+            req_create = []
+            for i in created_ids:
+                if self.scoutnet_users[i].contact_mobile_phone:
+                    self.logger.info(
+                        "Create phone %d (%s)",
+                        i,
+                        self.scoutnet_users[i].contact_mobile_phone,
                     )
-                )
-            else:
-                self.logger.warning(
-                    "Skipping user without phone %d (%s %s)",
-                    i,
-                    self.scoutnet_users[i].first_name,
-                    self.scoutnet_users[i].last_name,
-                )
-        if req_create and not self.dry_run:
-            res = api.create_phones(req_create)
-            req_assign = []
-            for phone in res:
-                person_id = self.phone_to_person_id.get(phone.phone_number)
-                if person_id:
-                    self.logger.info("Assigning phone %s", phone.phone_number)
-                    req_assign.append(
-                        airkey.models.MediumAssignment(
-                            medium_id=phone.id, person_id=person_id
+                    req_create.append(
+                        airkey.models.PhoneCreate(
+                            phone_number=self.scoutnet_users[i].contact_mobile_phone,
                         )
                     )
-            if req_assign:
-                api.assign_owner_to_medium(req_assign)
-                for a in req_assign:
-                    self.send_registration_code(a.medium_id)
+                else:
+                    self.logger.warning(
+                        "Skipping user without phone %d (%s %s)",
+                        i,
+                        self.scoutnet_users[i].first_name,
+                        self.scoutnet_users[i].last_name,
+                    )
+            if req_create and not self.dry_run:
+                res = api.create_phones(req_create)
+                req_assign = []
+                for phone in res:
+                    person_id = self.phone_to_person_id.get(phone.phone_number)
+                    if person_id:
+                        self.logger.info("Assigning phone %s", phone.phone_number)
+                        req_assign.append(
+                            airkey.models.MediumAssignment(
+                                medium_id=phone.id, person_id=person_id
+                            )
+                        )
+                if req_assign:
+                    api.assign_owner_to_medium(req_assign)
+                    for a in req_assign:
+                        self.send_registration_code(a.medium_id)
 
         # Delete removed phones
-        req_delete = []
-        for i in deleted_ids:
-            self.logger.info(
-                "Delete phone %d (%s)",
-                i,
-                self.phones_by_scoutnet_id[i].phone_number,
-            )
-            req_delete.append(self.phones_by_scoutnet_id[i].id)
-        if req_delete and not self.dry_run:
-            api.delete_phones(req_delete)
+        if delete_phones:
+            deleted_ids = airkey_ids - scoutnet_ids
+            req_delete = []
+            for i in deleted_ids:
+                self.logger.info(
+                    "Delete phone %d (%s)",
+                    i,
+                    self.phones_by_scoutnet_id[i].phone_number,
+                )
+                req_delete.append(self.phones_by_scoutnet_id[i].id)
+            if req_delete and not self.dry_run:
+                api.delete_phones(req_delete)
 
     def sync_auth(self, area_ids: List = []):
         """Sync medias with Airkey"""
