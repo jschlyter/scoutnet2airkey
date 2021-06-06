@@ -476,5 +476,6 @@ def main() -> None:
         if args.send_sms:
             a.send_pending_registration_codes()
 
+
 if __name__ == "__main__":
     main()
