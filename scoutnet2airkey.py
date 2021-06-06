@@ -470,10 +470,11 @@ def main() -> None:
         )
         a.sync_persons()
         a.sync_phones()
-        a.sync_auth(area_ids=config["airkey"]["areas"])
+        areas_ids = config["airkey"].get(["areas"])
+        if areas_ids:
+            a.sync_auth(area_ids=areas_ids)
         if args.send_sms:
             a.send_pending_registration_codes()
-
 
 if __name__ == "__main__":
     main()
