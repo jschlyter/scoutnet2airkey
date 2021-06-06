@@ -44,7 +44,6 @@ class ScoutnetAirkey(object):
         endpoint: str,
         api_key: str,
         scoutnet_users: dict,
-        send_sms: bool = False,
         dry_run: bool = True,
     ):
         conf = airkey.Configuration()
@@ -52,7 +51,6 @@ class ScoutnetAirkey(object):
         self.api_client = airkey.ApiClient(
             conf, header_name="X-API-Key", header_value=api_key
         )
-        self.send_sms = send_sms
         self.dry_run = dry_run
 
         self.logger = logging.getLogger(__name__).getChild(self.__class__.__name__)
@@ -297,8 +295,6 @@ class ScoutnetAirkey(object):
                         )
                 if req_assign:
                     api.assign_owner_to_medium(req_assign)
-                    for a in req_assign:
-                        self.send_registration_code(a.medium_id)
 
         # Delete removed phones
         if delete_phones:
@@ -387,16 +383,12 @@ class ScoutnetAirkey(object):
                 self.logger.info(
                     "Pending registration exists for %s", phone.phone_number
                 )
-            elif self.send_sms:
+            else:
                 self.logger.info(
                     "Sending new registration code to %s", phone.phone_number
                 )
                 if not self.dry_run:
                     api.send_registration_code_to_phone(phone.id)
-            else:
-                self.logger.warning(
-                    "NOT sending registration code to %s", phone.phone_number
-                )
         else:
             self.logger.debug("Already registered %s", phone.phone_number)
 
@@ -474,13 +466,13 @@ def main() -> None:
             endpoint=config["airkey"]["endpoint"],
             api_key=config["airkey"]["api_key"],
             scoutnet_users=key_holders,
-            send_sms=args.send_sms,
             dry_run=args.dry_run,
         )
         a.sync_persons()
         a.sync_phones()
         a.sync_auth(area_ids=config["airkey"]["areas"])
-        a.send_pending_registration_codes()
+        if args.send_sms:
+            a.send_pending_registration_codes()
 
 
 if __name__ == "__main__":
