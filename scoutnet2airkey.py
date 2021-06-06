@@ -2,7 +2,7 @@ import argparse
 import json
 import logging
 from collections import defaultdict
-from typing import List
+from typing import List, Optional
 
 import airkey
 import yaml
@@ -87,9 +87,10 @@ class ScoutnetAirkey(object):
             self.persons_by_person_id[p.id] = p
             if p.secondary_identification:
                 scoutnet_id = int(p.secondary_identification)
-                self.persons_by_scoutnet_id[scoutnet_id] = p
-                phone_number = self.scoutnet_users[scoutnet_id].contact_mobile_phone
-                self.phone_to_person_id[phone_number] = p.id
+                if scoutnet_id in self.scoutnet_users:
+                    self.persons_by_scoutnet_id[scoutnet_id] = p
+                    phone_number = self.scoutnet_users[scoutnet_id].contact_mobile_phone
+                    self.phone_to_person_id[phone_number] = p.id
 
     def _fetch_medium(self):
         """Fetch mediums from Airkey"""
@@ -369,14 +370,17 @@ class ScoutnetAirkey(object):
             for a in req_create:
                 api.create_or_update_authorizations_with_advanced_options(a)
 
-    def send_pending_registration_codes(self):
+    def send_pending_registration_codes(self, limit: Optional[int] = None):
         """Send registration codes"""
         self._fetch_medium()
         api = airkey.MediaApi(api_client=self.api_client)
         for medium_id in self.phones_by_medium_id.keys():
-            self.send_registration_code(medium_id)
+            if limit is None or limit > 0:
+                sent = self.send_registration_code(api, medium_id)
+            if sent and limit is not None and limit > 0:
+                limit -= 1
 
-    def send_registration_code(self, medium_id: int):
+    def send_registration_code(self, api, medium_id: int) -> bool:
         phone = self.phones_by_medium_id[medium_id]
         if phone.medium_identifier is None:
             if phone.pairing_code_valid_until is not None:
@@ -388,9 +392,12 @@ class ScoutnetAirkey(object):
                     "Sending new registration code to %s", phone.phone_number
                 )
                 if not self.dry_run:
+                    api.generate_pairing_code_for_phone(phone.id)
                     api.send_registration_code_to_phone(phone.id)
+                    return True
         else:
             self.logger.debug("Already registered %s", phone.phone_number)
+        return False
 
 
 def main() -> None:
@@ -414,6 +421,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--sms", dest="send_sms", action="store_true", help="Send registration SMS"
+    )
+    parser.add_argument(
+        "--limit", dest="limit", type=int, help="Limit number of operations"
     )
     parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Enable debugging output"
@@ -470,11 +480,11 @@ def main() -> None:
         )
         a.sync_persons()
         a.sync_phones()
-        areas_ids = config["airkey"].get(["areas"])
+        areas_ids = config["airkey"].get("areas")
         if areas_ids:
             a.sync_auth(area_ids=areas_ids)
         if args.send_sms:
-            a.send_pending_registration_codes()
+            a.send_pending_registration_codes(limit=args.limit)
 
 
 if __name__ == "__main__":
