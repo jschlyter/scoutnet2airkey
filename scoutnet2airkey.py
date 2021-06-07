@@ -406,8 +406,8 @@ class ScoutnetAirkey(object):
         for medium_id in self.phones_by_medium_id.keys():
             if limit is None or limit > 0:
                 sent = self.send_registration_code(api, medium_id)
+                count += 1 if sent else 0
             if sent and limit is not None and limit > 0:
-                count += 1
                 limit -= 1
         self.logger.info("%d codes sent", count)
 
