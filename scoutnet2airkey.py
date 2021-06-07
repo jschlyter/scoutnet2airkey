@@ -423,17 +423,12 @@ class ScoutnetAirkey(object):
             ):
                 count += 1
                 person = self.persons_by_person_id.get(phone.person_id)
-                self.logger.info(
-                    "Pending registration exists for %s (%s)",
-                    phone.phone_number,
-                    f"{person.first_name} {person.last_name}"
-                    if person
-                    else "Anonymous",
+                name = (
+                    f"{person.first_name} {person.last_name}" if person else "Anonymous"
                 )
-        self.logger.info(
-            "%d pending registrations (total %d phones)",
-            count,
-            len(self.phones_by_medium_id),
+                print(f"{phone.phone_number} ({name})")
+        print(
+            f"{count} pending registrations (total {len(self.phones_by_medium_id)} phones)"
         )
 
     def send_registration_code(self, api, medium_id: int) -> bool:
@@ -481,11 +476,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.basicConfig(level=logging.INFO)
-
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
+    elif args.verbose:
+        logging.basicConfig(level=logging.INFO)
 
     with open(DEFAULT_CONFIG_FILE, "rt") as config_file:
         config = yaml.safe_load(config_file)
