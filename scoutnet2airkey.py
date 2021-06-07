@@ -2,11 +2,11 @@ import argparse
 import json
 import logging
 from collections import defaultdict
-from typing import List, Optional
+from typing import List, Optional, Set, Dict
 
 import airkey
 import yaml
-from scoutnet import ScoutnetClient
+from scoutnet import ScoutnetClient, ScoutnetMember
 
 DEFAULT_CONFIG_FILE = "scoutnet2airkey.yaml"
 DEFAULT_LANGUAGE = "sv-SE"
@@ -36,6 +36,34 @@ def load_data(client: ScoutnetClient, filename: str):
 
     client.memberlist = lambda: memberlist_data
     client.customlists = lambda: customlists_data
+
+
+def get_key_holders(
+    client: ScoutnetClient, holders: Set[str]
+) -> Dict[int, ScoutnetMember]:
+    """Get key holders from Scoutnet"""
+
+    members = client.get_all_members()
+    key_holders_aliases = set(holders)
+
+    key_holders_list_ids = []
+    for list_data in client.get_all_lists(fetch_members=False).values():
+        if key_holders_aliases & set(list_data.aliases):
+            key_holders_list_ids.append(list_data.id)
+
+    key_holders = {}
+    for list_id, v in client.get_all_lists(
+        fetch_members=True, list_ids=key_holders_list_ids
+    ).items():
+        for member_id, member in v.members.items():
+            if member_id not in key_holders:
+                if member_id in members:
+                    key_holders[member_id] = members[member_id]
+
+    if len(key_holders) == 0:
+        raise RuntimeError("No key holders!")
+
+    return key_holders
 
 
 class ScoutnetAirkey(object):
@@ -373,12 +401,36 @@ class ScoutnetAirkey(object):
     def send_pending_registration_codes(self, limit: Optional[int] = None):
         """Send registration codes"""
         self._fetch_medium()
+        count = 0
         api = airkey.MediaApi(api_client=self.api_client)
         for medium_id in self.phones_by_medium_id.keys():
             if limit is None or limit > 0:
                 sent = self.send_registration_code(api, medium_id)
             if sent and limit is not None and limit > 0:
+                count += 1
                 limit -= 1
+        self.logger.info("%d codes sent", count)
+
+    def list_pending_registration_codes(self):
+        self._fetch_medium()
+        api = airkey.MediaApi(api_client=self.api_client)
+        count = 0
+        for medium_id in self.phones_by_medium_id.keys():
+            phone = self.phones_by_medium_id[medium_id]
+            if (
+                phone.medium_identifier is None
+                and phone.pairing_code_valid_until is not None
+            ):
+                count += 1
+                person = self.persons_by_person_id.get(phone.person_id)
+                self.logger.info(
+                    "Pending registration exists for %s (%s)",
+                    phone.phone_number,
+                    f"{person.first_name} {person.last_name}"
+                    if person
+                    else "Anonymous",
+                )
+        self.logger.info("%d pending registrations", count)
 
     def send_registration_code(self, api, medium_id: int) -> bool:
         phone = self.phones_by_medium_id[medium_id]
@@ -405,6 +457,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Scoutnet EVVA Airkey Integration")
 
+    parser.add_argument("commands", nargs="+", choices=["sync", "sms", "pending"])
     parser.add_argument(
         "--dry-run",
         dest="dry_run",
@@ -416,12 +469,6 @@ def main() -> None:
     )
     parser.add_argument("--dump", dest="dump", metavar="filename")
     parser.add_argument("--load", dest="load", metavar="filename")
-    parser.add_argument(
-        "--airkey", dest="airkey", action="store_true", help="Provision to EVVA Airkey"
-    )
-    parser.add_argument(
-        "--sms", dest="send_sms", action="store_true", help="Send registration SMS"
-    )
     parser.add_argument(
         "--limit", dest="limit", type=int, help="Limit number of operations"
     )
@@ -439,7 +486,7 @@ def main() -> None:
     with open(DEFAULT_CONFIG_FILE, "rt") as config_file:
         config = yaml.safe_load(config_file)
 
-    scoutnet = ScoutnetClient(
+    scoutnet_client = ScoutnetClient(
         api_endpoint=config["scoutnet"].get("api_endpoint"),
         api_id=config["scoutnet"]["api_id"],
         api_key_memberlist=config["scoutnet"]["api_key_memberlist"],
@@ -447,44 +494,32 @@ def main() -> None:
     )
 
     if args.dump:
-        dump_data(scoutnet, args.dump)
+        dump_data(scoutnet_client, args.dump)
     elif args.load:
-        load_data(scoutnet, args.load)
+        load_data(scoutnet_client, args.load)
 
-    members = scoutnet.get_all_members()
-    key_holders_aliases = set(set(config["airkey"]["holders"]))
+    key_holders_aliases = set(config["airkey"]["holders"])
+    key_holders = get_key_holders(scoutnet_client, key_holders_aliases)
 
-    key_holders_list_ids = []
-    for list_data in scoutnet.get_all_lists(fetch_members=False).values():
-        if key_holders_aliases & set(list_data.aliases):
-            key_holders_list_ids.append(list_data.id)
+    airkey_client = ScoutnetAirkey(
+        endpoint=config["airkey"]["endpoint"],
+        api_key=config["airkey"]["api_key"],
+        scoutnet_users=key_holders,
+        dry_run=args.dry_run,
+    )
 
-    key_holders = {}
-    for list_id, v in scoutnet.get_all_lists(
-        fetch_members=True, list_ids=key_holders_list_ids
-    ).items():
-        for member_id, member in v.members.items():
-            if member_id not in key_holders:
-                if member_id in members:
-                    key_holders[member_id] = members[member_id]
-
-    if len(key_holders) == 0:
-        raise RuntimeError("No key holders!")
-
-    if args.airkey:
-        a = ScoutnetAirkey(
-            endpoint=config["airkey"]["endpoint"],
-            api_key=config["airkey"]["api_key"],
-            scoutnet_users=key_holders,
-            dry_run=args.dry_run,
-        )
-        a.sync_persons()
-        a.sync_phones()
+    if "sync" in args.commands:
+        airkey_client.sync_persons()
+        airkey_client.sync_phones()
         areas_ids = config["airkey"].get("areas")
         if areas_ids:
-            a.sync_auth(area_ids=areas_ids)
-        if args.send_sms:
-            a.send_pending_registration_codes(limit=args.limit)
+            airkey_client.sync_auth(area_ids=areas_ids)
+
+    if "sms" in args.commands:
+        airkey_client.send_pending_registration_codes(limit=args.limit)
+
+    if "pending" in args.commands:
+        airkey_client.list_pending_registration_codes()
 
 
 if __name__ == "__main__":
