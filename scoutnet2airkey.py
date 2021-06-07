@@ -430,7 +430,11 @@ class ScoutnetAirkey(object):
                     if person
                     else "Anonymous",
                 )
-        self.logger.info("%d pending registrations", count)
+        self.logger.info(
+            "%d pending registrations (total %d phones)",
+            count,
+            len(self.phones_by_medium_id),
+        )
 
     def send_registration_code(self, api, medium_id: int) -> bool:
         phone = self.phones_by_medium_id[medium_id]
