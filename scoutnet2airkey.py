@@ -468,7 +468,7 @@ def main() -> None:
         help="Test mode (no changes written)",
     )
     parser.add_argument(
-        "--verbose", dest="verbose", action="store_true", help="Enable verbose output"
+        "--silent", dest="silent", action="store_true", help="Disable non-critical warnings"
     )
     parser.add_argument("--dump", dest="dump", metavar="filename")
     parser.add_argument("--load", dest="load", metavar="filename")
@@ -482,7 +482,9 @@ def main() -> None:
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
-    elif args.verbose:
+    elif args.silent:
+        logging.basicConfig(level=logging.WARNING)
+    else:
         logging.basicConfig(level=logging.INFO)
 
     with open(DEFAULT_CONFIG_FILE, "rt") as config_file:
