@@ -87,6 +87,7 @@ class ScoutnetAirkey(object):
 
         self.scoutnet_users = scoutnet_users
 
+        self.person_id_to_scoutnet_id = {}
         self.persons_by_person_id = {}
         self.persons_by_scoutnet_id = {}
 
@@ -119,6 +120,7 @@ class ScoutnetAirkey(object):
                     self.persons_by_scoutnet_id[scoutnet_id] = p
                     phone_number = self.scoutnet_users[scoutnet_id].contact_mobile_phone
                     self.phone_to_person_id[phone_number] = p.id
+                    self.person_id_to_scoutnet_id[p.id] = scoutnet_id
 
     def _fetch_medium(self):
         """Fetch mediums from Airkey"""
@@ -423,10 +425,12 @@ class ScoutnetAirkey(object):
             ):
                 count += 1
                 person = self.persons_by_person_id.get(phone.person_id)
-                name = (
-                    f"{person.first_name} {person.last_name}" if person else "Anonymous"
-                )
-                print(f"{phone.phone_number} ({name})")
+                scoutnet_id = self.person_id_to_scoutnet_id[phone.person_id]
+                scout = self.scoutnet_users.get(scoutnet_id)
+                if scout:
+                    print(f"{phone.phone_number} ({scout.display_name}) {scout.email}")
+                else:
+                    print(f"{phone.phone_number} (anonymous)")
         print(
             f"{count} pending registrations (total {len(self.phones_by_medium_id)} phones)"
         )
