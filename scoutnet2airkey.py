@@ -2,7 +2,7 @@ import argparse
 import json
 import logging
 from collections import defaultdict
-from typing import List, Optional, Set, Dict
+from typing import Dict, List, Optional, Set
 
 import airkey
 import yaml
@@ -147,10 +147,10 @@ class ScoutnetAirkey(object):
                     self.phones_by_scoutnet_id[scoutnet_id] = m
             else:
                 self.logger.warning(
-                    "Will delete anonymous phone %d, %s", m.id, m.phone_number
+                    "Deleting anonymous phone %d, %s", m.id, m.phone_number
                 )
                 unassigned_phones.append(m.id)
-        if unassigned_phones:
+        if unassigned_phones and not self.dry_run:
             api = airkey.MediaApi(api_client=self.api_client)
             api.delete_phones(unassigned_phones)
 
@@ -170,11 +170,16 @@ class ScoutnetAirkey(object):
             authorizations.extend(res.authorizations)
             offset += limit
         for a in authorizations:
+            if a.current_state == "DELETED":
+                continue
             self.auth_by_auth_id[a.id] = a
-            person = self.persons_by_person_id[a.person_id]
-            if person.secondary_identification:
-                scoutnet_id = int(person.secondary_identification)
-                self.auth_by_scoutnet_id[scoutnet_id].append(a)
+            try:
+                person = self.persons_by_person_id[a.person_id]
+                if person.secondary_identification:
+                    scoutnet_id = int(person.secondary_identification)
+                    self.auth_by_scoutnet_id[scoutnet_id].append(a)
+            except KeyError as exc:
+                self.logger.warning("No person for authorization %s", a.id)
 
     def sync_persons(
         self,
@@ -254,6 +259,8 @@ class ScoutnetAirkey(object):
             if req_delete and not self.dry_run:
                 api.delete_persons(req_delete)
 
+        self._fetch_persons()
+
     def sync_phones(
         self,
         create_phones: bool = True,
@@ -261,6 +268,7 @@ class ScoutnetAirkey(object):
         delete_phones: bool = False,
     ):
         """Sync phones with Airkey"""
+        self._fetch_persons()
         self._fetch_medium()
 
         api = airkey.MediaApi(api_client=self.api_client)
@@ -274,7 +282,8 @@ class ScoutnetAirkey(object):
             req_update = []
             for i in existing_ids:
                 if (
-                    self.phones_by_scoutnet_id[i].phone_number
+                    self.scoutnet_users[i].contact_mobile_phone
+                    and self.phones_by_scoutnet_id[i].phone_number
                     != self.scoutnet_users[i].contact_mobile_phone
                 ):
                     self.logger.info(
@@ -312,8 +321,10 @@ class ScoutnetAirkey(object):
                         self.scoutnet_users[i].first_name,
                         self.scoutnet_users[i].last_name,
                     )
-            if req_create and not self.dry_run:
+            if req_create:
                 res = api.create_phones(req_create)
+                self._fetch_medium()
+
                 req_assign = []
                 for phone in res:
                     person_id = self.phone_to_person_id.get(phone.phone_number)
@@ -324,8 +335,18 @@ class ScoutnetAirkey(object):
                                 medium_id=phone.id, person_id=person_id
                             )
                         )
-                if req_assign:
-                    api.assign_owner_to_medium(req_assign)
+                        self.phones_by_medium_id[phone.id] = phone
+                    else:
+                        self.logger.warning(
+                            "Unable to find person for %s", phone.phone_number
+                        )
+                if req_assign and not self.dry_run:
+                    res = api.assign_owner_to_medium(req_assign)
+                    self.logger.info(
+                        "Sending registration codes to %d new phones", len(res)
+                    )
+                    for m in res:
+                        self.send_registration_code(api, m.medium_id)
 
         # Delete removed phones
         if delete_phones:
@@ -341,64 +362,78 @@ class ScoutnetAirkey(object):
             if req_delete and not self.dry_run:
                 api.delete_phones(req_delete)
 
-    def sync_auth(self, area_ids: List = []):
+    def sync_auth(
+        self,
+        area_ids: List = [],
+        create_auth: bool = False,
+        update_auth: bool = False,
+        delete_auth: bool = False,
+    ):
         """Sync medias with Airkey"""
-        self._fetch_auth()
+        self._fetch_persons()
         self._fetch_medium()
+        self._fetch_auth()
 
         api = airkey.AuthorizationsApi(api_client=self.api_client)
         self.phones_by_medium_id = {}
 
-        req_create = []
-        for scoutnet_id, person in self.persons_by_scoutnet_id.items():
-            if scoutnet_id not in self.auth_by_scoutnet_id:
+        if create_auth:
+            req_create = []
+            for scoutnet_id, person in self.persons_by_scoutnet_id.items():
+                if scoutnet_id not in self.auth_by_scoutnet_id:
 
-                phone = self.phones_by_scoutnet_id.get(scoutnet_id)
-                if not phone:
-                    self.logger.debug(
-                        "No phone medium for %d, %s %s",
-                        scoutnet_id,
-                        person.first_name,
-                        person.last_name,
-                    )
-                    continue
-
-                for area_id in area_ids:
-                    self.logger.info(
-                        "Create auth for %d, %s %s, area %d",
-                        scoutnet_id,
-                        person.first_name,
-                        person.last_name,
-                        area_id,
-                    )
-
-                    req_create.append(
-                        airkey.models.AuthorizationChange(
-                            authorization_create_list=[
-                                airkey.models.AuthorizationCreate(
-                                    authorization_info_list=[
-                                        airkey.models.AuthorizationInfo(
-                                            type="PERMANENT"
-                                        )
-                                    ],
-                                    medium_id=phone.id,
-                                    area_id=area_id,
-                                ),
-                            ],
-                            authorization_update_list=[],
+                    phone = self.phones_by_scoutnet_id.get(scoutnet_id)
+                    if not phone:
+                        self.logger.debug(
+                            "No phone medium for %d, %s %s",
+                            scoutnet_id,
+                            person.first_name,
+                            person.last_name,
                         )
-                    )
-            else:
-                self.logger.debug(
-                    "Existing auth for %d, %s %s",
-                    scoutnet_id,
-                    person.first_name,
-                    person.last_name,
-                )
+                        continue
 
-        if req_create and not self.dry_run:
-            for a in req_create:
-                api.create_or_update_authorizations_with_advanced_options(a)
+                    for area_id in area_ids:
+                        self.logger.info(
+                            "Create auth for %d, %s %s, area %d",
+                            scoutnet_id,
+                            person.first_name,
+                            person.last_name,
+                            area_id,
+                        )
+
+                        req_create.append(
+                            airkey.models.AuthorizationChange(
+                                authorization_create_list=[
+                                    airkey.models.AuthorizationCreate(
+                                        authorization_info_list=[
+                                            airkey.models.AuthorizationInfo(
+                                                type="PERMANENT"
+                                            )
+                                        ],
+                                        medium_id=phone.id,
+                                        area_id=area_id,
+                                    ),
+                                ],
+                                authorization_update_list=[],
+                            )
+                        )
+                else:
+                    self.logger.debug(
+                        "Existing auth for %d, %s %s",
+                        scoutnet_id,
+                        person.first_name,
+                        person.last_name,
+                    )
+
+            if req_create and not self.dry_run:
+                for a in req_create:
+                    api.create_or_update_authorizations_with_advanced_options(a)
+
+        if update_auth:
+            self.logger.warning("Uuthorization updates not yet implemented")
+
+        if delete_auth:
+            self.logger.warning("Duthorization deletions not yet implemented")
 
     def send_pending_registration_codes(self, limit: Optional[int] = None):
         """Send registration codes"""
@@ -468,7 +503,10 @@ def main() -> None:
         help="Test mode (no changes written)",
     )
     parser.add_argument(
-        "--silent", dest="silent", action="store_true", help="Disable non-critical warnings"
+        "--silent",
+        dest="silent",
+        action="store_true",
+        help="Disable non-critical warnings",
     )
     parser.add_argument("--dump", dest="dump", metavar="filename")
     parser.add_argument("--load", dest="load", metavar="filename")
@@ -515,6 +553,7 @@ def main() -> None:
     if "sync" in args.commands:
         airkey_client.sync_persons()
         airkey_client.sync_phones()
+        airkey_client.sync_auth()
         areas_ids = config["airkey"].get("areas")
         if areas_ids:
             airkey_client.sync_auth(area_ids=areas_ids)
