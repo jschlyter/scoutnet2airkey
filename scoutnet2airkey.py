@@ -116,11 +116,13 @@ class ScoutnetAirkey(object):
             self.persons_by_person_id[p.id] = p
             if p.secondary_identification:
                 scoutnet_id = int(p.secondary_identification)
+                self.persons_by_scoutnet_id[scoutnet_id] = p
+                self.person_id_to_scoutnet_id[p.id] = scoutnet_id
                 if scoutnet_id in self.scoutnet_users:
-                    self.persons_by_scoutnet_id[scoutnet_id] = p
                     phone_number = self.scoutnet_users[scoutnet_id].contact_mobile_phone
                     self.phone_to_person_id[phone_number] = p.id
-                    self.person_id_to_scoutnet_id[p.id] = scoutnet_id
+                else:
+                    self.logger.debug("%d not in Scoutnet", scoutnet_id)
 
     def _fetch_medium(self):
         """Fetch mediums from Airkey"""
@@ -183,8 +185,8 @@ class ScoutnetAirkey(object):
 
     def sync_persons(
         self,
-        create_persons: bool = True,
-        update_persons: bool = True,
+        create_persons: bool = False,
+        update_persons: bool = False,
         delete_persons: bool = False,
     ):
         """Sync persons with Airkey"""
@@ -263,8 +265,8 @@ class ScoutnetAirkey(object):
 
     def sync_phones(
         self,
-        create_phones: bool = True,
-        update_phones: bool = True,
+        create_phones: bool = False,
+        update_phones: bool = False,
         delete_phones: bool = False,
     ):
         """Sync phones with Airkey"""
@@ -551,9 +553,11 @@ def main() -> None:
     )
 
     if "sync" in args.commands:
-        airkey_client.sync_persons()
-        airkey_client.sync_phones()
-        airkey_client.sync_auth()
+        airkey_client.sync_persons(create_persons=True, update_persons=True)
+        airkey_client.sync_phones(create_phones=True, update_phones=True)
+        airkey_client.sync_phones(delete_phones=True)
+        airkey_client.sync_persons(delete_persons=True)
+
         areas_ids = config["airkey"].get("areas")
         if areas_ids:
             airkey_client.sync_auth(area_ids=areas_ids)
