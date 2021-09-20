@@ -430,10 +430,10 @@ class ScoutnetAirkey(object):
                     api.create_or_update_authorizations_with_advanced_options(a)
 
         if update_auth:
-            self.logger.warning("Uuthorization updates not yet implemented")
+            self.logger.warning("Authorization updates not yet implemented")
 
         if delete_auth:
-            self.logger.warning("Duthorization deletions not yet implemented")
+            self.logger.warning("Authorization deletions not yet implemented")
 
     def send_pending_registration_codes(self, limit: Optional[int] = None):
         """Send registration codes"""
