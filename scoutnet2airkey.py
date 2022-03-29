@@ -100,8 +100,7 @@ class ScoutnetAirkey(object):
 
     def _fetch_persons(self):
         """Fetch persons from Airkey"""
-        if self.persons_by_person_id:
-            return
+        self.logger.debug("Fetch persons")
         api = airkey.PersonsApi(api_client=self.api_client)
         persons = []
         offset = 0
@@ -126,8 +125,7 @@ class ScoutnetAirkey(object):
 
     def _fetch_medium(self):
         """Fetch mediums from Airkey"""
-        if self.phones_by_medium_id:
-            return
+        self.logger.debug("Fetch medium")
         self._fetch_persons()
         api = airkey.MediaApi(api_client=self.api_client)
         medium = []
@@ -139,7 +137,6 @@ class ScoutnetAirkey(object):
                 break
             medium.extend(res.medium_list)
             offset += limit
-        unassigned_phones = []
         for m in medium:
             self.phones_by_medium_id[m.id] = m
             if m.person_id:
@@ -147,19 +144,10 @@ class ScoutnetAirkey(object):
                 if p.secondary_identification:
                     scoutnet_id = int(p.secondary_identification)
                     self.phones_by_scoutnet_id[scoutnet_id] = m
-            else:
-                self.logger.warning(
-                    "Deleting anonymous phone %d, %s", m.id, m.phone_number
-                )
-                unassigned_phones.append(m.id)
-        if unassigned_phones and not self.dry_run:
-            api = airkey.MediaApi(api_client=self.api_client)
-            api.delete_phones(unassigned_phones)
 
     def _fetch_auth(self):
         """Fetch authorizations from Airkey"""
-        if self.auth_by_auth_id:
-            return
+        self.logger.debug("Fetch authorizations")
         self._fetch_persons()
         api = airkey.AuthorizationsApi(api_client=self.api_client)
         authorizations = []
@@ -190,6 +178,8 @@ class ScoutnetAirkey(object):
         delete_persons: bool = False,
     ):
         """Sync persons with Airkey"""
+        self.logger.debug("Sync persons")
+
         self._fetch_persons()
 
         api = airkey.PersonsApi(api_client=self.api_client)
@@ -270,6 +260,8 @@ class ScoutnetAirkey(object):
         delete_phones: bool = False,
     ):
         """Sync phones with Airkey"""
+        self.logger.debug("Sync phones")
+
         self._fetch_persons()
         self._fetch_medium()
 
@@ -279,7 +271,7 @@ class ScoutnetAirkey(object):
         scoutnet_ids = set(self.scoutnet_users.keys())
 
         # Update existing phones
-        if create_phones:
+        if update_phones:
             existing_ids = scoutnet_ids & airkey_ids
             req_update = []
             for i in existing_ids:
@@ -364,6 +356,30 @@ class ScoutnetAirkey(object):
             if req_delete and not self.dry_run:
                 api.delete_phones(req_delete)
 
+    def delete_unassigned_phones(self):
+        """Delete unassigned phones from Airkey"""
+        self.logger.debug("Delete unassigned phones")
+        api = airkey.MediaApi(api_client=self.api_client)
+        medium = []
+        offset = 0
+        limit = DEFAULT_LIMIT
+        while True:
+            res = api.get_phones(offset=offset, limit=limit)
+            if not len(res.medium_list):
+                break
+            medium.extend(res.medium_list)
+            offset += limit
+        unassigned_phones = []
+        for m in medium:
+            if not m.person_id:
+                self.logger.warning(
+                    "Deleting unassigned phone %d, %s", m.id, m.phone_number
+                )
+                unassigned_phones.append(m.id)
+        if unassigned_phones and not self.dry_run:
+            api = airkey.MediaApi(api_client=self.api_client)
+            api.delete_phones(unassigned_phones)
+
     def sync_auth(
         self,
         area_ids: List = [],
@@ -371,7 +387,9 @@ class ScoutnetAirkey(object):
         update_auth: bool = False,
         delete_auth: bool = False,
     ):
-        """Sync medias with Airkey"""
+        """Sync auth with Airkey"""
+        self.logger.debug("Sync auth")
+
         self._fetch_persons()
         self._fetch_medium()
         self._fetch_auth()
@@ -439,6 +457,7 @@ class ScoutnetAirkey(object):
 
     def send_pending_registration_codes(self, limit: Optional[int] = None):
         """Send registration codes"""
+        self.logger.debug("Send registration codes")
         self._fetch_medium()
         count = 0
         api = airkey.MediaApi(api_client=self.api_client)
@@ -451,6 +470,7 @@ class ScoutnetAirkey(object):
         self.logger.info("%d codes sent", count)
 
     def list_pending_registration_codes(self):
+        self.logger.debug("List pending registration codes")
         self._fetch_medium()
         api = airkey.MediaApi(api_client=self.api_client)
         count = 0
@@ -473,6 +493,7 @@ class ScoutnetAirkey(object):
         )
 
     def send_registration_code(self, api, medium_id: int) -> bool:
+        self.logger.debug("Send registration code for %d", medium_id)
         phone = self.phones_by_medium_id[medium_id]
         if phone.medium_identifier is None:
             if phone.pairing_code_valid_until is not None:
@@ -554,8 +575,10 @@ def main() -> None:
 
     if "sync" in args.commands:
         airkey_client.sync_persons(create_persons=True, update_persons=True)
-        airkey_client.sync_phones(create_phones=True, update_phones=True)
-        airkey_client.sync_phones(delete_phones=True)
+        airkey_client.sync_phones(
+            create_phones=True, update_phones=True, delete_phones=True
+        )
+        airkey_client.delete_unassigned_phones()
         airkey_client.sync_persons(delete_persons=True)
 
         areas_ids = config["airkey"].get("areas")
