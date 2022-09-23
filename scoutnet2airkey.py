@@ -539,6 +539,9 @@ def main() -> None:
     parser.add_argument(
         "--debug", dest="debug", action="store_true", help="Enable debugging output"
     )
+    parser.add_argument(
+        "--delete", dest="delete", action="store_true", help="Delete resources"
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -576,10 +579,10 @@ def main() -> None:
     if "sync" in args.commands:
         airkey_client.sync_persons(create_persons=True, update_persons=True)
         airkey_client.sync_phones(
-            create_phones=True, update_phones=True, delete_phones=True
+            create_phones=True, update_phones=True, delete_phones=args.delete
         )
         airkey_client.delete_unassigned_phones()
-        airkey_client.sync_persons(delete_persons=True)
+        airkey_client.sync_persons(delete_persons=args.delete)
 
         areas_ids = config["airkey"].get("areas")
         if areas_ids:
