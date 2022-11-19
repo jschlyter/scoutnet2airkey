@@ -25,3 +25,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 scoutnet2airkey = "scoutnet2airkey:main"
+
+[tool.pylama.linter.pycodestyle]
+max_line_length = 132
+ignore = "W606"
+
+[tool.pylama.linter.mccabe]
+complexity = 40
