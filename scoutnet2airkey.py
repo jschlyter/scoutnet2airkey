@@ -176,6 +176,7 @@ class ScoutnetAirkey(object):
         create_persons: bool = False,
         update_persons: bool = False,
         delete_persons: bool = False,
+        deauthorize_persons: bool = False,
     ):
         """Sync persons with Airkey"""
         self.logger.debug("Sync persons")
@@ -235,6 +236,34 @@ class ScoutnetAirkey(object):
                 )
             if req_create and not self.dry_run:
                 api.create_persons(req_create)
+
+        # Deauthorize removed users
+        if deauthorize_persons:
+            deleted_ids = airkey_ids - scoutnet_ids
+            req_deauthorize = []
+            auth_api = airkey.AuthorizationsApi(api_client=self.api_client)
+            for i in deleted_ids:
+                person_id = self.persons_by_scoutnet_id[i].id
+                res = auth_api.get_authorizations(person_id=person_id)
+                if res.authorizations:
+                    areas = [a.area.name for a in res.authorizations]
+                    self.logger.info(
+                        "User %d (%s %s) should no longer have access to %s",
+                        i,
+                        self.persons_by_scoutnet_id[i].first_name,
+                        self.persons_by_scoutnet_id[i].last_name,
+                        areas,
+                    )
+                    deauthorizations = [
+                        airkey.models.AuthorizationDelete(
+                            id=a.id, deletion_requested=True
+                        )
+                        for a in res.authorizations
+                        if not a.deletion_requested
+                    ]
+                    req_deauthorize.extend(deauthorizations)
+            if req_deauthorize and not self.dry_run:
+                auth_api.delete_authorization(req_deauthorize)
 
         # Delete removed users
         if delete_persons:
@@ -582,7 +611,7 @@ def main() -> None:
             create_phones=True, update_phones=True, delete_phones=args.delete
         )
         airkey_client.delete_unassigned_phones()
-        airkey_client.sync_persons(delete_persons=args.delete)
+        airkey_client.sync_persons(delete_persons=args.delete, deauthorize_persons=True)
 
         areas_ids = config["airkey"].get("areas")
         if areas_ids:
