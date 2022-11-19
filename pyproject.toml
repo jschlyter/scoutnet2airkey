@@ -15,6 +15,7 @@ urllib3 = "^1.26.4"
 requests = "^2.25.1"
 PyYAML = "^5.4.1"
 scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", rev = "main"}
+airkey = {git = "https://github.com/jschlyter/python-airkey.git", rev = "main"}
 
 [tool.poetry.dev-dependencies]
 
