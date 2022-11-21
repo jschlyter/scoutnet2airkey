@@ -245,8 +245,12 @@ class ScoutnetAirkey(object):
             for i in deleted_ids:
                 person_id = self.persons_by_scoutnet_id[i].id
                 res = auth_api.get_authorizations(person_id=person_id)
-                if res.authorizations:
-                    areas = [a.area.name for a in res.authorizations]
+                areas = [
+                    a.area.name
+                    for a in (res.authorizations or [])
+                    if not a.deletion_requested
+                ]
+                if areas:
                     self.logger.info(
                         "User %d (%s %s) should no longer have access to %s",
                         i,
@@ -259,7 +263,6 @@ class ScoutnetAirkey(object):
                             id=a.id, deletion_requested=True
                         )
                         for a in res.authorizations
-                        if not a.deletion_requested
                     ]
                     req_deauthorize.extend(deauthorizations)
             if req_deauthorize and not self.dry_run:
