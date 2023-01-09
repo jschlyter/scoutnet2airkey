@@ -514,8 +514,9 @@ class ScoutnetAirkey(object):
             ):
                 count += 1
                 person = self.persons_by_person_id.get(phone.person_id)
-                scoutnet_id = self.person_id_to_scoutnet_id[phone.person_id]
+                scoutnet_id = self.person_id_to_scoutnet_id.get(phone.person_id)
                 scout = self.scoutnet_users.get(scoutnet_id)
+
                 if scout:
                     print(f"{phone.phone_number} ({scout.display_name}) {scout.email}")
                 else:
@@ -528,13 +529,22 @@ class ScoutnetAirkey(object):
         self.logger.debug("Send registration code for %d", medium_id)
         phone = self.phones_by_medium_id[medium_id]
         if phone.medium_identifier is None:
+
+            person = self.persons_by_person_id.get(phone.person_id)
+            scoutnet_id = self.person_id_to_scoutnet_id.get(phone.person_id)
+            scout = self.scoutnet_users.get(scoutnet_id)
+
             if phone.pairing_code_valid_until is not None:
                 self.logger.info(
-                    "Pending registration exists for %s", phone.phone_number
+                    "Pending registration exists for %s (%s)",
+                    phone.phone_number,
+                    scout.display_name,
                 )
             else:
                 self.logger.info(
-                    "Sending new registration code to %s", phone.phone_number
+                    "Sending new registration code to %s (%s)",
+                    phone.phone_number,
+                    scout.display_name,
                 )
                 if not self.dry_run:
                     api.generate_pairing_code_for_phone(phone.id)
