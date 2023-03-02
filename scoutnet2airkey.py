@@ -514,18 +514,15 @@ class ScoutnetAirkey(object):
             ):
                 count += 1
                 person = self.persons_by_person_id.get(phone.person_id)
-                scoutnet_id = self.person_id_to_scoutnet_id.get(phone.person_id)
-                scout = self.scoutnet_users.get(scoutnet_id)
-
-                if scout:
-                    print(f"{phone.phone_number} ({scout.display_name}) {scout.email}")
-                else:
-                    print(f"{phone.phone_number} (anonymous)")
+                print(f"{phone.phone_number}, {person.first_name} {person.last_name}")
+        print()
         print(
             f"{count} pending registrations (total {len(self.phones_by_medium_id)} phones)"
         )
 
-    def send_registration_code(self, api, medium_id: int) -> bool:
+    def send_registration_code(
+        self, api, medium_id: int, managed_only: bool = True
+    ) -> bool:
         self.logger.debug("Send registration code for %d", medium_id)
         phone = self.phones_by_medium_id[medium_id]
         if phone.medium_identifier is None:
@@ -534,22 +531,41 @@ class ScoutnetAirkey(object):
             scoutnet_id = self.person_id_to_scoutnet_id.get(phone.person_id)
             scout = self.scoutnet_users.get(scoutnet_id)
 
+            if managed_only and not scout:
+                self.logger.debug(
+                    "Ignoring medium %s (%s %s)",
+                    phone.phone_number,
+                    person.first_name,
+                    person.last_name,
+                )
+                return False
+
             if phone.pairing_code_valid_until is not None:
                 self.logger.info(
-                    "Pending registration exists for %s (%s)",
+                    "Pending registration exists for %s (%s %s)",
                     phone.phone_number,
-                    scout.display_name,
+                    person.first_name,
+                    person.last_name,
+                )
+                return False
+
+            if self.dry_run:
+                self.logger.warning(
+                    "NOT sending new registration code to %s (%s %s)",
+                    phone.phone_number,
+                    person.first_name,
+                    person.last_name,
                 )
             else:
                 self.logger.info(
-                    "Sending new registration code to %s (%s)",
+                    "Sending new registration code to %s (%s %s)",
                     phone.phone_number,
-                    scout.display_name,
+                    person.first_name,
+                    person.last_name,
                 )
-                if not self.dry_run:
-                    api.generate_pairing_code_for_phone(phone.id)
-                    api.send_registration_code_to_phone(phone.id)
-                    return True
+                api.generate_pairing_code_for_phone(phone.id)
+                api.send_registration_code_to_phone(phone.id)
+            return True
         else:
             self.logger.debug("Already registered %s", phone.phone_number)
         return False
