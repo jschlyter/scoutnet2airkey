@@ -1,8 +1,0 @@
-scoutnet:
-  api_id: 1
-  api_key_memberlist: XXX
-  api_key_customlists: YYY
-
-airkey:
-  holders:
-    - list@domain.com
