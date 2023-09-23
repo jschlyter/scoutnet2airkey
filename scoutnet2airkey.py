@@ -527,7 +527,7 @@ class ScoutnetAirkey(object):
         if phone.medium_identifier is None:
             person = self.persons_by_person_id.get(phone.person_id)
 
-            if managed_only and not scout:
+            if managed_only and not person:
                 self.logger.debug(
                     "Ignoring medium %s (%s %s)",
                     phone.phone_number,
