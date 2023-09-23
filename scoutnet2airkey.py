@@ -320,6 +320,11 @@ class ScoutnetAirkey(object):
                         i
                     ].contact_mobile_phone
                     req_update.append(self.phones_by_scoutnet_id[i])
+
+                phone = self.phones_by_scoutnet_id[i]
+                if not phone.medium_identifier and not phone.pairing_code:
+                    breakpoint()
+                    self.send_registration_code(api, phone.id)
             if req_update and not self.dry_run:
                 api.update_phones(req_update)
 
@@ -529,24 +534,19 @@ class ScoutnetAirkey(object):
 
             if managed_only and not person:
                 self.logger.debug(
-                    "Ignoring medium %s (%s %s)",
-                    phone.phone_number,
-                    person.first_name,
-                    person.last_name,
+                    "Ignoring medium %s",
+                    medium_id,
                 )
                 return False
 
             if phone.pairing_code_valid_until is not None:
                 self.logger.info(
-                    "Pending registration exists for %d (%s)",
-                    phone.person_id,
+                    "Pending registration exists for %s",
                     phone.phone_number,
                 )
             else:
                 self.logger.info(
-                    "Sending new registration code to %d (%s)",
-                    phone.person_id,
-                    phone.phone_number,
+                    "Sending registration code to %s", phone.phone_number
                 )
                 if not self.dry_run:
                     api.generate_pairing_code_for_phone(phone.id)
