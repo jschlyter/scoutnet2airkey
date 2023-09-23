@@ -9,4 +9,5 @@ WORKDIR /scout
 COPY --from=builder /tmp/dist/*.whl .
 RUN pip install *.whl && rm -f *.whl
 WORKDIR /scout/conf
-ENTRYPOINT scoutnet2airkey
+ENTRYPOINT ["scoutnet2airkey"]
+CMD ["--help"]
