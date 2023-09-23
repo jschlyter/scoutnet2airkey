@@ -5,10 +5,10 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set
 
 import airkey
-import yaml
+import tomllib
 from scoutnet import ScoutnetClient, ScoutnetMember
 
-DEFAULT_CONFIG_FILE = "scoutnet2airkey.yaml"
+DEFAULT_CONFIG_FILE = "scoutnet2airkey.toml"
 DEFAULT_LANGUAGE = "sv-SE"
 DEFAULT_LIMIT = 100
 
@@ -545,9 +545,7 @@ class ScoutnetAirkey(object):
                     phone.phone_number,
                 )
             else:
-                self.logger.info(
-                    "Sending registration code to %s", phone.phone_number
-                )
+                self.logger.info("Sending registration code to %s", phone.phone_number)
                 if not self.dry_run:
                     api.generate_pairing_code_for_phone(phone.id)
                     api.send_registration_code_to_phone(phone.id)
@@ -595,8 +593,8 @@ def main() -> None:
     else:
         logging.basicConfig(level=logging.INFO)
 
-    with open(DEFAULT_CONFIG_FILE, "rt") as config_file:
-        config = yaml.safe_load(config_file)
+    with open(DEFAULT_CONFIG_FILE, "rb") as config_file:
+        config = tomllib.load(config_file)
 
     scoutnet_client = ScoutnetClient(
         api_endpoint=config["scoutnet"].get("api_endpoint"),

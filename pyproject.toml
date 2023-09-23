@@ -8,12 +8,6 @@ repository = "https://github.com/jschlyter/scoutnet2airkey"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-certifi = "^2020.12.5"
-six = "^1.15.0"
-python-dateutil = "^2.8.1"
-urllib3 = "^1.26.4"
-requests = "^2.25.1"
-PyYAML = "^5.4.1"
 scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", rev = "main"}
 airkey = {git = "https://github.com/jschlyter/python-airkey.git", rev = "main"}
 
