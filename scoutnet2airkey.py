@@ -321,9 +321,11 @@ class ScoutnetAirkey(object):
                     ].contact_mobile_phone
                     req_update.append(self.phones_by_scoutnet_id[i])
 
+                # Send registration code to users who never got one
                 phone = self.phones_by_scoutnet_id[i]
                 if not phone.medium_identifier and not phone.pairing_code:
-                    self.send_registration_code(api, phone.id)
+                    if not self.dry_run:
+                        self.send_registration_code(api, phone.id)
             if req_update and not self.dry_run:
                 api.update_phones(req_update)
 
@@ -517,7 +519,7 @@ class ScoutnetAirkey(object):
                 count += 1
                 person = self.persons_by_person_id.get(phone.person_id)
                 print(
-                    f"{phone.phone_number} ({person.first_name} {person.last_name}) {person.secondary_identification}"
+                    f"{phone.phone_number} ({person.first_name} {person.last_name})"
                 )
         print(
             f"{count} pending registrations (total {len(self.phones_by_medium_id)} phones)"
@@ -545,7 +547,11 @@ class ScoutnetAirkey(object):
                 )
                 return False
             else:
-                self.logger.info("Sending registration code to %s", phone.phone_number)
+                self.logger.info(
+                    "Sending registration code to %s (%s)",
+                    phone.phone_number,
+                    f"{person.first_name} {person.last_name}" if person else "UNKNOWN",
+                )
                 if not self.dry_run:
                     api.generate_pairing_code_for_phone(phone.id)
                     api.send_registration_code_to_phone(phone.id)
