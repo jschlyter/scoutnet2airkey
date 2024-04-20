@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Set
 import airkey
 import tomllib
 from scoutnet import ScoutnetClient, ScoutnetMember
+from icecream import ic
 
 DEFAULT_CONFIG_FILE = "scoutnet2airkey.toml"
 DEFAULT_LANGUAGE = "sv-SE"
@@ -322,10 +323,10 @@ class ScoutnetAirkey(object):
                     req_update.append(self.phones_by_scoutnet_id[i])
 
                 # Send registration code to users who never got one
-                phone = self.phones_by_scoutnet_id[i]
-                if not phone.medium_identifier and not phone.pairing_code:
-                    if not self.dry_run:
-                        self.send_registration_code(api, phone.id)
+                #phone = self.phones_by_scoutnet_id[i]
+                #if not phone.medium_identifier and not phone.pairing_code_valid_until:
+                #    if not self.dry_run:
+                #        self.send_registration_code(api, phone.id)
             if req_update and not self.dry_run:
                 api.update_phones(req_update)
 
@@ -416,6 +417,31 @@ class ScoutnetAirkey(object):
         if unassigned_phones and not self.dry_run:
             api = airkey.MediaApi(api_client=self.api_client)
             api.delete_phones(unassigned_phones)
+
+    def purge_phones(self):
+        """Purge deleted phones from Airkey"""
+        self.logger.debug("Purge deleted phones")
+        api = airkey.MediaApi(api_client=self.api_client)
+        medium = []
+        offset = 0
+        limit = DEFAULT_LIMIT
+        while True:
+            res = api.get_phones(offset=offset, limit=limit)
+            if not len(res.medium_list):
+                break
+            medium.extend(res.medium_list)
+            offset += limit
+        inactive_phones = []
+        for m in medium:
+            if not m.activated:
+                self.logger.warning(
+                    "Deleting inactive phone %d, %s", m.id, m.phone_number
+                )
+                inactive_phones.append(m.id)
+                print(m)
+        if inactive_phones and not self.dry_run:
+            api = airkey.MediaApi(api_client=self.api_client)
+            api.delete_phones(inactive_phones)
 
     def sync_auth(
         self,
@@ -566,7 +592,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Scoutnet EVVA Airkey Integration")
 
-    parser.add_argument("commands", nargs="+", choices=["sync", "sms", "pending"])
+    parser.add_argument("commands", nargs="+", choices=["sync", "sms", "pending", "purge"])
     parser.add_argument(
         "--dry-run",
         dest="dry_run",
@@ -642,6 +668,8 @@ def main() -> None:
     if "pending" in args.commands:
         airkey_client.list_pending_registration_codes()
 
+    if "purge" in args.commands:
+        airkey_client.purge_phones()
 
 if __name__ == "__main__":
     main()

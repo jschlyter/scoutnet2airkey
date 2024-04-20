@@ -10,6 +10,7 @@ repository = "https://github.com/jschlyter/scoutnet2airkey"
 python = "^3.9"
 scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", rev = "main"}
 airkey = {git = "https://github.com/jschlyter/python-airkey.git", rev = "main"}
+icecream = "^2.1.3"
 
 [tool.poetry.dev-dependencies]
 
