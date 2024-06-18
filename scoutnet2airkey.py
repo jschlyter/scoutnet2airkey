@@ -1,13 +1,11 @@
 import argparse
 import json
 import logging
+import tomllib
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
 
 import airkey
-import tomllib
 from scoutnet import ScoutnetClient, ScoutnetMember
-from icecream import ic
 
 DEFAULT_CONFIG_FILE = "scoutnet2airkey.toml"
 DEFAULT_LANGUAGE = "sv-SE"
@@ -21,14 +19,14 @@ def dump_data(client: ScoutnetClient, filename: str):
     client.memberlist = lambda: memberlist_data
     client.customlists = lambda: customlists_data
 
-    with open(filename, "wt") as dump_file:
+    with open(filename, "w") as dump_file:
         json.dump(
             {"memberlist": memberlist_data, "customlists": customlists_data}, dump_file
         )
 
 
 def load_data(client: ScoutnetClient, filename: str):
-    with open(filename, "rt") as dump_file:
+    with open(filename) as dump_file:
         dump = json.load(dump_file)
 
     memberlist_data = dump["memberlist"]
@@ -39,8 +37,8 @@ def load_data(client: ScoutnetClient, filename: str):
 
 
 def get_key_holders(
-    client: ScoutnetClient, holders: Set[str]
-) -> Dict[int, ScoutnetMember]:
+    client: ScoutnetClient, holders: set[str]
+) -> dict[int, ScoutnetMember]:
     """Get key holders from Scoutnet"""
 
     members = client.get_all_members()
@@ -52,13 +50,14 @@ def get_key_holders(
             key_holders_list_ids.append(list_data.id)
 
     key_holders = {}
-    for list_id, v in client.get_all_lists(
+    for v in client.get_all_lists(
         fetch_members=True, list_ids=key_holders_list_ids
-    ).items():
-        for member_id, member in v.members.items():
-            if member_id not in key_holders:
-                if member_id in members:
-                    key_holders[member_id] = members[member_id]
+    ).values():
+        if v.members:
+            for member_id in v.members:
+                if member_id not in key_holders:
+                    if member_id in members:
+                        key_holders[member_id] = members[member_id]
 
     if len(key_holders) == 0:
         raise RuntimeError("No key holders!")
@@ -66,7 +65,7 @@ def get_key_holders(
     return key_holders
 
 
-class ScoutnetAirkey(object):
+class ScoutnetAirkey:
     def __init__(
         self,
         endpoint: str,
@@ -168,7 +167,7 @@ class ScoutnetAirkey(object):
                 if person.secondary_identification:
                     scoutnet_id = int(person.secondary_identification)
                     self.auth_by_scoutnet_id[scoutnet_id].append(a)
-            except KeyError as exc:
+            except KeyError:
                 self.logger.warning("No person for authorization %s", a.id)
 
     def sync_persons(
@@ -323,8 +322,8 @@ class ScoutnetAirkey(object):
                     req_update.append(self.phones_by_scoutnet_id[i])
 
                 # Send registration code to users who never got one
-                #phone = self.phones_by_scoutnet_id[i]
-                #if not phone.medium_identifier and not phone.pairing_code_valid_until:
+                # phone = self.phones_by_scoutnet_id[i]
+                # if not phone.medium_identifier and not phone.pairing_code_valid_until:
                 #    if not self.dry_run:
                 #        self.send_registration_code(api, phone.id)
             if req_update and not self.dry_run:
@@ -445,7 +444,7 @@ class ScoutnetAirkey(object):
 
     def sync_auth(
         self,
-        area_ids: List = [],
+        area_ids: list[str] | None = None,
         create_auth: bool = False,
         update_auth: bool = False,
         delete_auth: bool = False,
@@ -474,7 +473,7 @@ class ScoutnetAirkey(object):
                         )
                         continue
 
-                    for area_id in area_ids:
+                    for area_id in area_ids or []:
                         self.logger.info(
                             "Create auth for %d, %s %s, area %d",
                             scoutnet_id,
@@ -517,13 +516,13 @@ class ScoutnetAirkey(object):
         if delete_auth:
             self.logger.warning("Authorization deletions not yet implemented")
 
-    def send_pending_registration_codes(self, limit: Optional[int] = None):
+    def send_pending_registration_codes(self, limit: int | None = None):
         """Send registration codes"""
         self.logger.debug("Send registration codes")
         self._fetch_medium()
         count = 0
         api = airkey.MediaApi(api_client=self.api_client)
-        for medium_id in self.phones_by_medium_id.keys():
+        for medium_id in self.phones_by_medium_id:
             if limit is None or limit > 0:
                 sent = self.send_registration_code(api, medium_id)
                 count += 1 if sent else 0
@@ -534,9 +533,8 @@ class ScoutnetAirkey(object):
     def list_pending_registration_codes(self):
         self.logger.debug("List pending registration codes")
         self._fetch_medium()
-        api = airkey.MediaApi(api_client=self.api_client)
         count = 0
-        for medium_id in self.phones_by_medium_id.keys():
+        for medium_id in self.phones_by_medium_id:
             phone = self.phones_by_medium_id[medium_id]
             if (
                 phone.medium_identifier is None
@@ -544,9 +542,7 @@ class ScoutnetAirkey(object):
             ):
                 count += 1
                 person = self.persons_by_person_id.get(phone.person_id)
-                print(
-                    f"{phone.phone_number} ({person.first_name} {person.last_name})"
-                )
+                print(f"{phone.phone_number} ({person.first_name} {person.last_name})")
         print(
             f"{count} pending registrations (total {len(self.phones_by_medium_id)} phones)"
         )
@@ -592,7 +588,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Scoutnet EVVA Airkey Integration")
 
-    parser.add_argument("commands", nargs="+", choices=["sync", "sms", "pending", "purge"])
+    parser.add_argument(
+        "commands", nargs="+", choices=["sync", "sms", "pending", "purge"]
+    )
     parser.add_argument(
         "--dry-run",
         dest="dry_run",
@@ -670,6 +668,7 @@ def main() -> None:
 
     if "purge" in args.commands:
         airkey_client.purge_phones()
+
 
 if __name__ == "__main__":
     main()

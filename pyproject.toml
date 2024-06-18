@@ -7,10 +7,9 @@ license = "BSD-2-Clause"
 repository = "https://github.com/jschlyter/scoutnet2airkey"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.11"
 scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", rev = "main"}
 airkey = {git = "https://github.com/jschlyter/python-airkey.git", rev = "main"}
-icecream = "^2.1.3"
 
 [tool.poetry.dev-dependencies]
 
@@ -21,9 +20,23 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 scoutnet2airkey = "scoutnet2airkey:main"
 
-[tool.pylama.linter.pycodestyle]
-max_line_length = 132
-ignore = "W606"
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+]
+ignore = ["E501", "I001", "SIM102"]
+exclude = ["examples/*"]
 
-[tool.pylama.linter.mccabe]
-complexity = 40
+[tool.ruff.lint.isort]
+combine-as-imports = true
