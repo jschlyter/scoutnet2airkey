@@ -120,7 +120,12 @@ class ScoutnetAirkey:
                     phone_number = self.scoutnet_users[scoutnet_id].contact_mobile_phone
                     self.phone_to_person_id[phone_number] = p.id
                 else:
-                    self.logger.debug("%d not in Scoutnet (ignored)", scoutnet_id)
+                    self.logger.debug(
+                        "%d (%s %s) not in Scoutnet (ignored)",
+                        scoutnet_id,
+                        p.first_name,
+                        p.last_name,
+                    )
 
     def _fetch_medium(self):
         """Fetch mediums from Airkey"""
