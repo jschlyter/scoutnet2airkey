@@ -15,7 +15,7 @@ scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", rev = "mai
 airkey = {git = "https://github.com/jschlyter/python-airkey.git", rev = "main"}
 
 [tool.poetry.group.dev.dependencies]
-ruff = "^0.6.4"
+ruff = ">=0.4.9"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
