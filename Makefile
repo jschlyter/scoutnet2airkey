@@ -7,10 +7,10 @@ container:
 	docker build --pull -t scoutnet2airkey .
 
 test:
-	poetry run scoutnet2airkey.py
+	uv run python scoutnet2airkey.py
 
 lint:
-	poetry run ruff check
+	uv run ruff check
 
 clean:
 	rm -f $(CLEANFILES)
