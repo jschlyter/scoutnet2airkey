@@ -6,8 +6,8 @@ authors = [{name="Jakob Schlyter", email = "jakob@schlyter.se"}]
 license = "BSD-2-Clause"
 requires-python = ">=3.13,<4.0"
 dependencies = [
-    "airkey>=0.0.0",
-    "scoutnet>=1.2.1",
+    "airkey",
+    "scoutnet",
 ]
 
 [project.urls]
@@ -17,7 +17,7 @@ repository = "https://github.com/jschlyter/scoutnet2airkey"
 scoutnet2airkey = "scoutnet2airkey:main"
 
 [tool.uv.sources]
-scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git" }
+scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git", branch = "main" }
 airkey = {git = "https://github.com/jschlyter/python-airkey.git" }
 
 [build-system]
