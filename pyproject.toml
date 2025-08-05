@@ -1,6 +1,6 @@
 [project]
 name = "scoutnet2airkey"
-version = "0.0.0"
+dynamic = ["version"]
 description = "Scoutnet EVVA Airkey integration"
 authors = [{name="Jakob Schlyter", email = "jakob@schlyter.se"}]
 license = "BSD-2-Clause"
@@ -21,8 +21,11 @@ scoutnet = {git = "https://github.com/jschlyter/python-scoutnet.git" }
 airkey = {git = "https://github.com/jschlyter/python-airkey.git" }
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
 [dependency-groups]
 dev = [
