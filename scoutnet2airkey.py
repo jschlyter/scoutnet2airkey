@@ -625,8 +625,10 @@ def main() -> None:
         logging.basicConfig(level=logging.DEBUG)
     elif args.silent:
         logging.basicConfig(level=logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
     else:
         logging.basicConfig(level=logging.INFO)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
 
     with open(DEFAULT_CONFIG_FILE, "rb") as config_file:
         config = tomllib.load(config_file)
